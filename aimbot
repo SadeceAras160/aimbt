@@ -4,132 +4,99 @@ local UserInputService = game:GetService("UserInputService")
 local Camera = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
--- Ayarlar
-_G.CircleRadius = 100
-_G.CircleTransparency = 0.6
-_G.CircleSides = 64
-_G.CircleFilled = false
-_G.CircleVisible = true
-_G.CircleThickness = 1
-local Smoothness = 0.2
-
 local Aiming = false
-local MenuVisible = false
+local Target = nil
+
+-- Ayarlar
+local FOV = 80
+local Smoothness = 0.2
 
 -- FOV Çemberi
 local FOVCircle = Drawing.new("Circle")
-FOVCircle.Filled = _G.CircleFilled
-FOVCircle.Transparency = _G.CircleTransparency
-FOVCircle.Thickness = _G.CircleThickness
-FOVCircle.NumSides = _G.CircleSides
-FOVCircle.Radius = _G.CircleRadius
-FOVCircle.Visible = _G.CircleVisible
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.7
+FOVCircle.Thickness = 1
+FOVCircle.NumSides = 64
+FOVCircle.Radius = FOV
+FOVCircle.Visible = true
 FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
--- UI Oluştur
-local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
-screenGui.Name = "AimbotSettings"
-local menuFrame = Instance.new("Frame", screenGui)
-menuFrame.Size = UDim2.new(0, 180, 0, 100)
-menuFrame.Position = UDim2.new(0.5, -90, 0.8, 0)
-menuFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-menuFrame.Visible = false
-
-local fovSlider = Instance.new("TextBox", menuFrame)
-fovSlider.Size = UDim2.new(1, -10, 0, 40)
-fovSlider.Position = UDim2.new(0, 5, 0, 5)
-fovSlider.PlaceholderText = "FOV (örn: 80)"
-fovSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-fovSlider.TextColor3 = Color3.new(1, 1, 1)
-
-local smoothSlider = Instance.new("TextBox", menuFrame)
-smoothSlider.Size = UDim2.new(1, -10, 0, 40)
-smoothSlider.Position = UDim2.new(0, 5, 0, 50)
-smoothSlider.PlaceholderText = "Smoothness (örn: 0.2)"
-smoothSlider.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-smoothSlider.TextColor3 = Color3.new(1, 1, 1)
-
--- GUI Aç/Kapat
-UserInputService.InputBegan:Connect(function(input, processed)
-	if not processed then
-		if input.KeyCode == Enum.KeyCode.E then
-			Aiming = not Aiming
-		elseif input.KeyCode == Enum.KeyCode.L then
-			MenuVisible = not MenuVisible
-			menuFrame.Visible = MenuVisible
-		end
+local function isVisible(targetCharacter)
+	if not targetCharacter then return false end
+	local head = targetCharacter:FindFirstChild("Head")
+	if not head then return false end
+	local origin = Camera.CFrame.Position
+	local direction = (head.Position - origin).Unit * 500
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+	local raycastResult = workspace:Raycast(origin, direction, raycastParams)
+	if raycastResult and raycastResult.Instance and raycastResult.Instance:IsDescendantOf(targetCharacter) then
+		return true
 	end
-end)
+	return false
+end
 
--- Ayar Değişikliği
-fovSlider.FocusLost:Connect(function()
-	local value = tonumber(fovSlider.Text)
-	if value then
-		_G.CircleRadius = math.clamp(value, 20, 1000)
-	end
-end)
-
-smoothSlider.FocusLost:Connect(function()
-	local value = tonumber(smoothSlider.Text)
-	if value then
-		Smoothness = math.clamp(value, 0.01, 1)
-	end
-end)
-
--- En Yakındaki Oyuncuyu (görüşte olan) bul
-local function getClosestPlayer()
+local function getClosestVisiblePlayer()
+	local mousePos = UserInputService:GetMouseLocation()
 	local closestPlayer = nil
-	local shortestDistance = _G.CircleRadius
+	local shortestDistance = FOV
 
-	for _, player in ipairs(Players:GetPlayers()) do
+	for _, player in pairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
-			local head = player.Character.Head
-			local screenPoint, onScreen = Camera:WorldToScreenPoint(head.Position)
-
-			if onScreen then
-				local mousePos = UserInputService:GetMouseLocation()
-				local distance = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(screenPoint.X, screenPoint.Y)).Magnitude
-
-				if distance < shortestDistance then
-					-- Raycast: duvar arkası kontrolü
-					local origin = Camera.CFrame.Position
-					local direction = (head.Position - origin)
-					local rayParams = RaycastParams.new()
-					rayParams.FilterDescendantsInstances = {LocalPlayer.Character, player.Character}
-					rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-					rayParams.IgnoreWater = true
-
-					local result = workspace:Raycast(origin, direction, rayParams)
-
-					if not result then
-						shortestDistance = distance
+			if isVisible(player.Character) then
+				local head = player.Character.Head
+				local screenPoint, onScreen = Camera:WorldToScreenPoint(head.Position)
+				if onScreen then
+					local dist = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(screenPoint.X, screenPoint.Y)).Magnitude
+					if dist < shortestDistance then
+						shortestDistance = dist
 						closestPlayer = player
 					end
 				end
 			end
 		end
 	end
-
 	return closestPlayer
 end
 
--- RenderStepped: Aimbot ve FOV güncellemesi
+-- E ile aç/kapa
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not processed and input.KeyCode == Enum.KeyCode.E then
+		Aiming = not Aiming
+		if not Aiming then
+			Target = nil
+		end
+	end
+end)
+
 RunService.RenderStepped:Connect(function()
-	-- FOV çemberi rengini döndür
-	local hue = tick() % 5 / 5
+	-- Renk döngüsü (Rainbow)
+	local hue = (tick() * 60) % 360 / 360
 	FOVCircle.Color = Color3.fromHSV(hue, 1, 1)
 
+	-- FOV Circle mouse etrafında
 	local mousePos = UserInputService:GetMouseLocation()
 	FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
-	FOVCircle.Radius = _G.CircleRadius
+	FOVCircle.Radius = FOV
 
 	if Aiming then
-		local target = getClosestPlayer()
-		if target and target.Character and target.Character:FindFirstChild("Head") then
-			local headPos = target.Character.Head.Position
+		if not Target or not Target.Character or not Target.Character:FindFirstChild("Head") then
+			Target = getClosestVisiblePlayer()
+		end
+
+		if Target and Target.Character and Target.Character:FindFirstChild("Head") then
 			local camPos = Camera.CFrame.Position
-			local newCFrame = CFrame.new(camPos, camPos:Lerp(headPos, Smoothness))
-			Camera.CFrame = newCFrame
+			local headPos = Target.Character.Head.Position
+
+			local currentLook = Camera.CFrame.LookVector
+			local desiredDir = (headPos - camPos).Unit
+			local newLook = currentLook:Lerp(desiredDir, Smoothness)
+
+			Camera.CFrame = CFrame.new(camPos, camPos + newLook)
+		else
+			Aiming = false
+			Target = nil
 		end
 	end
 end)
