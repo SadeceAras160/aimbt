@@ -8,7 +8,7 @@ local Aiming = false
 local Target = nil
 
 -- Ayarlar
-local FOV = 100
+local FOV = 150
 local Smoothness = 1 -- Daha hızlı kitlenme
 local MinDistanceFromCamera = 10 -- Çok yakın oyunculara kilitlenme (studs)
 
