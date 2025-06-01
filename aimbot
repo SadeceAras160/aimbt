@@ -9,7 +9,8 @@ local Target = nil
 
 -- Ayarlar
 local FOV = 100
-local Smoothness = 1
+local Smoothness = 1 -- Daha hızlı kitlenme
+local MinDistanceFromCamera = 10 -- Çok yakın oyunculara kilitlenme (studs)
 
 -- FOV Çemberi
 local FOVCircle = Drawing.new("Circle")
@@ -21,22 +22,29 @@ FOVCircle.Radius = FOV
 FOVCircle.Visible = true
 FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
 
+-- Görünürlük kontrolü
 local function isVisible(targetCharacter)
 	if not targetCharacter then return false end
 	local head = targetCharacter:FindFirstChild("Head")
 	if not head then return false end
+
 	local origin = Camera.CFrame.Position
-	local direction = (head.Position - origin).Unit * 500
+	local direction = (head.Position - origin).Unit * 1000
+
 	local raycastParams = RaycastParams.new()
-	raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+	raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
 	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
 	local raycastResult = workspace:Raycast(origin, direction, raycastParams)
-	if raycastResult and raycastResult.Instance and raycastResult.Instance:IsDescendantOf(targetCharacter) then
-		return true
+	if raycastResult and raycastResult.Instance then
+		if raycastResult.Instance:IsDescendantOf(targetCharacter) or (raycastResult.Position - head.Position).Magnitude < 2 then
+			return true
+		end
 	end
 	return false
 end
 
+-- En yakın görünür oyuncuyu bul
 local function getClosestVisiblePlayer()
 	local mousePos = UserInputService:GetMouseLocation()
 	local closestPlayer = nil
@@ -44,14 +52,19 @@ local function getClosestVisiblePlayer()
 
 	for _, player in pairs(Players:GetPlayers()) do
 		if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
-			if isVisible(player.Character) then
-				local head = player.Character.Head
-				local screenPoint, onScreen = Camera:WorldToScreenPoint(head.Position)
-				if onScreen then
-					local dist = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(screenPoint.X, screenPoint.Y)).Magnitude
-					if dist < shortestDistance then
-						shortestDistance = dist
-						closestPlayer = player
+			local head = player.Character.Head
+			local distanceToCamera = (head.Position - Camera.CFrame.Position).Magnitude
+
+			-- Çok yakındaki oyunculara kilitlenme
+			if distanceToCamera > MinDistanceFromCamera then
+				if isVisible(player.Character) then
+					local screenPoint, onScreen = Camera:WorldToScreenPoint(head.Position)
+					if onScreen then
+						local dist = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(screenPoint.X, screenPoint.Y)).Magnitude
+						if dist < shortestDistance then
+							shortestDistance = dist
+							closestPlayer = player
+						end
 					end
 				end
 			end
@@ -60,7 +73,7 @@ local function getClosestVisiblePlayer()
 	return closestPlayer
 end
 
--- E ile aç/kapa
+-- E tuşuyla aç/kapa
 UserInputService.InputBegan:Connect(function(input, processed)
 	if not processed and input.KeyCode == Enum.KeyCode.E then
 		Aiming = not Aiming
@@ -70,12 +83,13 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
+-- Ana döngü
 RunService.RenderStepped:Connect(function()
-	-- Renk döngüsü (Rainbow)
+	-- FOV çemberi renk döngüsü
 	local hue = (tick() * 60) % 360 / 360
 	FOVCircle.Color = Color3.fromHSV(hue, 1, 1)
 
-	-- FOV Circle mouse etrafında
+	-- Mouse pozisyonuna göre güncelle
 	local mousePos = UserInputService:GetMouseLocation()
 	FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
 	FOVCircle.Radius = FOV
