@@ -1,0 +1,208 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+local Aiming = false
+
+-- Ayarlar
+_G.CircleSides = 64
+_G.CircleTransparency = 0.7
+_G.CircleRadius = 80
+_G.CircleFilled = false
+_G.CircleVisible = true
+_G.CircleThickness = 1
+
+local FOV = _G.CircleRadius
+local Smoothness = 0.2
+
+-- FOV Çemberi
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Filled = _G.CircleFilled
+FOVCircle.Transparency = _G.CircleTransparency
+FOVCircle.Thickness = _G.CircleThickness
+FOVCircle.NumSides = _G.CircleSides
+FOVCircle.Radius = FOV
+FOVCircle.Visible = _G.CircleVisible
+FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+-- En Yakın Oyuncuyu Bul
+local function getClosestPlayer()
+	local closestPlayer = nil
+	local shortestDistance = FOV
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Head") then
+			local head = player.Character.Head
+			local screenPoint, onScreen = Camera:WorldToScreenPoint(head.Position)
+
+			if onScreen then
+				local mousePos = UserInputService:GetMouseLocation()
+				local distance = (Vector2.new(mousePos.X, mousePos.Y) - Vector2.new(screenPoint.X, screenPoint.Y)).Magnitude
+				if distance < shortestDistance then
+					shortestDistance = distance
+					closestPlayer = player
+				end
+			end
+		end
+	end
+
+	return closestPlayer
+end
+
+-- Menü GUI oluşturma
+local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+local menuFrame = Instance.new("Frame", screenGui)
+menuFrame.Size = UDim2.new(0, 250, 0, 80)
+menuFrame.Position = UDim2.new(0.5, -125, 1, -90)
+menuFrame.AnchorPoint = Vector2.new(0.5, 0)
+menuFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+menuFrame.BorderSizePixel = 0
+menuFrame.Visible = false
+menuFrame.Active = true
+menuFrame.Draggable = false
+
+local titleLabel = Instance.new("TextLabel", menuFrame)
+titleLabel.Size = UDim2.new(1, 0, 0, 20)
+titleLabel.Position = UDim2.new(0, 0, 0, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.Text = "Aimbot Settings"
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.TextSize = 18
+
+-- FOV Label
+local fovLabel = Instance.new("TextLabel", menuFrame)
+fovLabel.Size = UDim2.new(0, 50, 0, 20)
+fovLabel.Position = UDim2.new(0, 5, 0, 25)
+fovLabel.BackgroundTransparency = 1
+fovLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+fovLabel.Text = "FOV"
+fovLabel.Font = Enum.Font.SourceSans
+fovLabel.TextSize = 14
+fovLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- FOV Slider Bar
+local fovSliderBar = Instance.new("Frame", menuFrame)
+fovSliderBar.Size = UDim2.new(0, 180, 0, 10)
+fovSliderBar.Position = UDim2.new(0, 50, 0, 30)
+fovSliderBar.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+fovSliderBar.BorderSizePixel = 0
+
+local fovSlider = Instance.new("Frame", fovSliderBar)
+fovSlider.Size = UDim2.new(FOV/180, 0, 1, 0)
+fovSlider.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+fovSlider.BorderSizePixel = 0
+
+local fovSliderButton = Instance.new("ImageButton", fovSliderBar)
+fovSliderButton.Size = UDim2.new(0, 15, 0, 20)
+fovSliderButton.Position = UDim2.new(FOV/180, -7, 0, -5)
+fovSliderButton.BackgroundTransparency = 1
+fovSliderButton.Image = "rbxassetid://3926305904"
+fovSliderButton.ImageColor3 = Color3.fromRGB(0, 170, 255)
+fovSliderButton.Modal = true
+
+-- Smoothness Label
+local smoothLabel = Instance.new("TextLabel", menuFrame)
+smoothLabel.Size = UDim2.new(0, 80, 0, 20)
+smoothLabel.Position = UDim2.new(0, 5, 0, 50)
+smoothLabel.BackgroundTransparency = 1
+smoothLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+smoothLabel.Text = "Smoothness"
+smoothLabel.Font = Enum.Font.SourceSans
+smoothLabel.TextSize = 14
+smoothLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Smoothness Slider Bar
+local smoothSliderBar = Instance.new("Frame", menuFrame)
+smoothSliderBar.Size = UDim2.new(0, 180, 0, 10)
+smoothSliderBar.Position = UDim2.new(0, 80, 0, 55)
+smoothSliderBar.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+smoothSliderBar.BorderSizePixel = 0
+
+local smoothSlider = Instance.new("Frame", smoothSliderBar)
+smoothSlider.Size = UDim2.new(Smoothness/1, 0, 1, 0)
+smoothSlider.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+smoothSlider.BorderSizePixel = 0
+
+local smoothSliderButton = Instance.new("ImageButton", smoothSliderBar)
+smoothSliderButton.Size = UDim2.new(0, 15, 0, 20)
+smoothSliderButton.Position = UDim2.new(Smoothness/1, -7, 0, -5)
+smoothSliderButton.BackgroundTransparency = 1
+smoothSliderButton.Image = "rbxassetid://3926305904"
+smoothSliderButton.ImageColor3 = Color3.fromRGB(0, 170, 255)
+smoothSliderButton.Modal = true
+
+-- Slider sürükleme fonksiyonu
+local function sliderDrag(sliderBar, slider, sliderButton, maxValue, callback)
+	local dragging = false
+
+	sliderButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = true
+		end
+	end)
+
+	sliderButton.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local relativeX = math.clamp(input.Position.X - sliderBar.AbsolutePosition.X, 0, sliderBar.AbsoluteSize.X)
+			local percent = relativeX / sliderBar.AbsoluteSize.X
+			slider.Size = UDim2.new(percent, 0, 1, 0)
+			sliderButton.Position = UDim2.new(percent, -7, 0, -5)
+			callback(percent * maxValue)
+		end
+	end)
+end
+
+sliderDrag(fovSliderBar, fovSlider, fovSliderButton, 180, function(value)
+	FOV = value
+	_G.CircleRadius = value
+end)
+
+sliderDrag(smoothSliderBar, smoothSlider, smoothSliderButton, 1, function(value)
+	Smoothness = value
+end)
+
+-- Menü aç/kapat L tuşu ile
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not processed and input.KeyCode == Enum.KeyCode.L then
+		menuFrame.Visible = not menuFrame.Visible
+	end
+	if not processed and input.KeyCode == Enum.KeyCode.E then
+		Aiming = not Aiming
+	end
+end)
+
+-- RenderStepped döngüsü
+RunService.RenderStepped:Connect(function()
+	-- Renk döngüsü
+	local hue = tick() % 5 / 5
+	FOVCircle.Color = Color3.fromHSV(hue, 1, 1)
+
+	-- FOV çemberi mouse etrafında
+	local mousePos = UserInputService:GetMouseLocation()
+	FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
+	FOVCircle.Radius = FOV
+	FOVCircle.NumSides = _G.CircleSides
+	FOVCircle.Filled = _G.CircleFilled
+	FOVCircle.Transparency = _G.CircleTransparency
+	FOVCircle.Visible = _G.CircleVisible
+	FOVCircle.Thickness = _G.CircleThickness
+
+	-- Aimbot aktifse
+	if Aiming then
+		local target = getClosestPlayer()
+		if target and target.Character and target.Character:FindFirstChild("Head") then
+			local headPos = target.Character.Head.Position
+			local camPos = Camera.CFrame.Position
+			local desiredCFrame = CFrame.new(camPos, headPos)
+			Camera.CFrame = Camera.CFrame:Lerp(desiredCFrame, Smoothness)
+		end
+	end
+end)
