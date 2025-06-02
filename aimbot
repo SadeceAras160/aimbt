@@ -6,11 +6,11 @@ local LocalPlayer = Players.LocalPlayer
 
 local Aiming = false
 local Target = nil
-
--- Ayarlar
+local AllowWallCheck = true
 local FOV = 150
-local Smoothness = 1 -- Daha hızlı kitlenme
-local MinDistanceFromCamera = 10 -- Çok yakın oyunculara kilitlenme (studs)
+local Smoothness = 0.2
+local MinDistanceFromCamera = 10
+local LastTargetUpdate = 0
 
 -- FOV Çemberi
 local FOVCircle = Drawing.new("Circle")
@@ -28,23 +28,29 @@ local function isVisible(targetCharacter)
 	local head = targetCharacter:FindFirstChild("Head")
 	if not head then return false end
 
-	local origin = Camera.CFrame.Position
-	local direction = (head.Position - origin).Unit * 1000
+	if AllowWallCheck then
+		local origin = Camera.CFrame.Position
+		local direction = (head.Position - origin).Unit * 1000
 
-	local raycastParams = RaycastParams.new()
-	raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
-	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
+		raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 
-	local raycastResult = workspace:Raycast(origin, direction, raycastParams)
-	if raycastResult and raycastResult.Instance then
-		if raycastResult.Instance:IsDescendantOf(targetCharacter) or (raycastResult.Position - head.Position).Magnitude < 2 then
-			return true
+		local raycastResult = workspace:Raycast(origin, direction, raycastParams)
+		if raycastResult and raycastResult.Instance then
+			if raycastResult.Instance:IsDescendantOf(targetCharacter) or (raycastResult.Position - head.Position).Magnitude < 2 then
+				return true
+			else
+				return false
+			end
 		end
 	end
-	return false
+
+	-- Wall check kapalıysa doğrudan görünür say
+	return true
 end
 
--- En yakın görünür oyuncuyu bul
+-- En yakın oyuncuyu bul
 local function getClosestVisiblePlayer()
 	local mousePos = UserInputService:GetMouseLocation()
 	local closestPlayer = nil
@@ -55,7 +61,6 @@ local function getClosestVisiblePlayer()
 			local head = player.Character.Head
 			local distanceToCamera = (head.Position - Camera.CFrame.Position).Magnitude
 
-			-- Çok yakındaki oyunculara kilitlenme
 			if distanceToCamera > MinDistanceFromCamera then
 				if isVisible(player.Character) then
 					local screenPoint, onScreen = Camera:WorldToScreenPoint(head.Position)
@@ -83,33 +88,48 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
+-- WallBot Butonu
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+local WallButton = Instance.new("TextButton", ScreenGui)
+WallButton.Size = UDim2.new(0, 80, 0, 80)
+WallButton.Position = UDim2.new(0, 20, 0.5, -40)
+WallButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.2)
+WallButton.Text = "WallBot"
+WallButton.TextColor3 = Color3.new(1, 1, 1)
+WallButton.TextScaled = true
+WallButton.BorderSizePixel = 0
+WallButton.AutoButtonColor = true
+WallButton.BackgroundTransparency = 0.2
+WallButton.ClipsDescendants = true
+WallButton.AnchorPoint = Vector2.new(0, 0)
+
+WallButton.MouseButton1Click:Connect(function()
+	AllowWallCheck = not AllowWallCheck
+	WallButton.BackgroundColor3 = AllowWallCheck and Color3.fromRGB(50,50,50) or Color3.fromRGB(0, 170, 0)
+end)
+
 -- Ana döngü
 RunService.RenderStepped:Connect(function()
-	-- FOV çemberi renk döngüsü
-	local hue = (tick() * 60) % 360 / 360
-	FOVCircle.Color = Color3.fromHSV(hue, 1, 1)
-
-	-- Mouse pozisyonuna göre güncelle
 	local mousePos = UserInputService:GetMouseLocation()
 	FOVCircle.Position = Vector2.new(mousePos.X, mousePos.Y)
 	FOVCircle.Radius = FOV
+	local hue = (tick() * 60) % 360 / 360
+	FOVCircle.Color = Color3.fromHSV(hue, 1, 1)
 
 	if Aiming then
-		if not Target or not Target.Character or not Target.Character:FindFirstChild("Head") then
+		if tick() - LastTargetUpdate >= 0.1 then
 			Target = getClosestVisiblePlayer()
+			LastTargetUpdate = tick()
 		end
 
 		if Target and Target.Character and Target.Character:FindFirstChild("Head") then
 			local camPos = Camera.CFrame.Position
 			local headPos = Target.Character.Head.Position
-
 			local currentLook = Camera.CFrame.LookVector
 			local desiredDir = (headPos - camPos).Unit
 			local newLook = currentLook:Lerp(desiredDir, Smoothness)
-
 			Camera.CFrame = CFrame.new(camPos, camPos + newLook)
 		else
-			Aiming = false
 			Target = nil
 		end
 	end
