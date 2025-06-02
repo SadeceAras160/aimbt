@@ -8,7 +8,7 @@ local Aiming = false
 local Target = nil
 local AllowWallCheck = true
 local FOV = 150
-local Smoothness = 0.2
+local Smoothness = 1
 local MinDistanceFromCamera = 10
 local LastTargetUpdate = 0
 
